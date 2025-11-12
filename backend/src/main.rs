@@ -17,13 +17,39 @@ async fn health_handler() -> Json<HealthResponse> { // health_handler responds t
     let response = HealthResponse { status: "OK" }; // create a HealthResponse instance with status "OK".
     Json(response) // wrap it in Json to serialize it to JSON format.
 }
-async fn analyze_post_handler(Json(payload): Json<AnalyzeRequest>) -> Json<serde_json::Value> {
-    // For now, return a predictable structure so frontend integration is easy.
-    let response = serde_json::json!({
-        "ideas": ["placeholder - LLM not wired yet"],
-        "observations": format!("Received URL: {}", payload.url),
+async fn analyze_post_handler(
+    Json(payload): Json<AnalyzeRequest>,
+) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    let mut url = payload.url.clone();
+    if !url.ends_with(".json") {
+        url.push_str(".json");
+    }
+
+    let client = reqwest::Client::new();
+
+    let response = client
+        .get(&url)
+        .header("User-Agent", "reddit-idea-generator/0.1")
+        .send()
+        .await
+        .map_err(|_| axum::http::StatusCode::BAD_GATEWAY)?;
+
+    let data: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
+
+    let post_data = data[0]["data"]["children"][0]["data"].clone();
+
+    let title = post_data["title"].as_str().unwrap_or("No title").to_string();
+    let body = post_data["selftext"].as_str().unwrap_or("No text").to_string();
+
+    let result = serde_json::json!({
+        "title": title,
+        "body": body,
     });
-    Json(response)
+
+    Ok(Json(result))
 }
 
 #[tokio::main]
