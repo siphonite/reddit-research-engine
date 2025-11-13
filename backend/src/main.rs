@@ -1,22 +1,24 @@
-use axum::{routing::{get, post}, Router, Json}; // imports axom types, router - builds the route tables, get and post are helpers to quickly attach handlers to HTTP methods. 
-use std::net::SocketAddr;          // a small type to tell server which IP address and port to bind to.
-use serde::{Deserialize, Serialize}; // required to convert Rust structs to/from JSON when sending/receiving data.
-use tower_http::cors::{CorsLayer, Any}; // CORS middleware to handle cross-origin requests. 
+use axum::{routing::{get, post}, Router, Json};
+use std::net::SocketAddr;
+use serde::{Deserialize, Serialize};
+use tower_http::cors::{CorsLayer, Any};
+use std::env;
 
-#[derive(Deserialize)] // derive macros to automatically implement deserialization for the struct. 
-struct AnalyzeRequest {  // AnalyzeRequest models the JSON body our /analyze_post endpoint will accept. For now it only needs a url field.
+#[derive(Deserialize)]
+struct AnalyzeRequest {
     url: String,
 }
 
-#[derive(Serialize)] // derive macros to automatically implement serialization for the struct.
-struct HealthResponse { // HealthResponse is a tiny typed response for /health. Using typed structs makes the API predictable and easier to debug.
+#[derive(Serialize)]
+struct HealthResponse {
     status: &'static str,
-}   
-
-async fn health_handler() -> Json<HealthResponse> { // health_handler responds to GET /health requests with a simple JSON payload.
-    let response = HealthResponse { status: "OK" }; // create a HealthResponse instance with status "OK".
-    Json(response) // wrap it in Json to serialize it to JSON format.
 }
+
+async fn health_handler() -> Json<HealthResponse> {
+    let response = HealthResponse { status: "OK" };
+    Json(response)
+}
+
 async fn analyze_post_handler(
     Json(payload): Json<AnalyzeRequest>,
 ) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
@@ -33,13 +35,19 @@ async fn analyze_post_handler(
         .header("User-Agent", "reddit-idea-generator/0.1")
         .send()
         .await
-        .map_err(|_| axum::http::StatusCode::BAD_GATEWAY)?;
+        .map_err(|e| {
+            eprintln!("Reddit API error: {}", e);
+            axum::http::StatusCode::BAD_GATEWAY
+        })?;
 
     // 3. Parse Reddit response JSON
     let data: serde_json::Value = response
         .json()
         .await
-        .map_err(|_| axum::http::StatusCode::BAD_REQUEST)?;
+        .map_err(|e| {
+            eprintln!("Reddit JSON parse error: {}", e);
+            axum::http::StatusCode::BAD_REQUEST
+        })?;
 
     // 4. Extract post title and body text
     let post_data = data[0]["data"]["children"][0]["data"].clone();
@@ -55,7 +63,10 @@ async fn analyze_post_handler(
     // 6. Call Gemini API for idea generation
     let ai_response = match call_gemini_api(&prompt).await {
         Ok(text) => text,
-        Err(_) => "LLM call failed".to_string(),
+        Err(e) => {
+            eprintln!("Gemini API error: {}", e);
+            format!("LLM call failed: {}", e)
+        }
     };
 
     // 7. Combine everything into the response
@@ -68,59 +79,110 @@ async fn analyze_post_handler(
     Ok(Json(result))
 }
 
-
-use std::env;
-
 async fn call_gemini_api(prompt: &str) -> Result<String, anyhow::Error> {
-    dotenvy::dotenv().ok(); // Load .env file
-    let api_key = env::var("GEMINI_API_KEY")?;
-    let url = format!(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={}",
-        api_key
-    );
+    dotenvy::dotenv().ok();
+    let api_key = env::var("GEMINI_API_KEY")
+        .map_err(|_| anyhow::anyhow!("GEMINI_API_KEY not found in environment"))?;
+    
+    // Try multiple models in order of preference
+    let models = vec![
+        "gemini-2.5-flash",           // Primary: stable and fast
+        "gemini-flash-latest",        // Backup 1: latest flash
+        "gemini-2.5-flash-lite",      // Backup 2: lighter version
+        "gemini-2.0-flash",           // Backup 3: older stable
+    ];
 
     let payload = serde_json::json!({
-    "contents": [
-        {
-            "role": "user",
-            "parts": [
-                { "text": prompt }
-            ]
-        }
-    ]
-   });
-
+        "contents": [{
+            "parts": [{
+                "text": prompt
+            }]
+        }]
+    });
 
     let client = reqwest::Client::new();
-    let res = client.post(&url).json(&payload).send().await?;
-    let data: serde_json::Value = res.json().await?;
+    
+    // Try each model
+    for (i, model) in models.iter().enumerate() {
+        let url = format!(
+            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
+            model, api_key
+        );
+        
+        eprintln!("Attempting API call with model: {}", model);
+        
+        let res = match client
+            .post(&url)
+            .header("Content-Type", "application/json")
+            .json(&payload)
+            .send()
+            .await {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("Request failed for {}: {}", model, e);
+                    continue;
+                }
+            };
 
-    // Extract text safely
-    let text = data["candidates"][0]["content"]["parts"][0]["text"]
-        .as_str()
-        .unwrap_or("No response")
-        .to_string();
+        let status = res.status();
+        
+        // If overloaded (503) or rate limited (429), try next model
+        if status == 503 || status == 429 {
+            eprintln!("{} is overloaded/rate-limited ({}), trying next model...", model, status);
+            if i < models.len() - 1 {
+                continue;
+            }
+        }
+        
+        if !status.is_success() {
+            let error_text = res.text().await.unwrap_or_else(|_| "Unknown error".to_string());
+            eprintln!("API error ({}): {}", status, error_text);
+            if i < models.len() - 1 {
+                continue;
+            }
+            return Err(anyhow::anyhow!("All models failed. Last error {}: {}", status, error_text));
+        }
 
-    Ok(text)
+        let data: serde_json::Value = res.json().await?;
+        
+        // Extract text
+        let text = data
+            .get("candidates")
+            .and_then(|c| c.get(0))
+            .and_then(|c| c.get("content"))
+            .and_then(|c| c.get("parts"))
+            .and_then(|p| p.get(0))
+            .and_then(|p| p.get("text"))
+            .and_then(|t| t.as_str())
+            .ok_or_else(|| anyhow::anyhow!("Failed to extract text from response"))?
+            .to_string();
+
+        eprintln!("Successfully got response from {}", model);
+        return Ok(text);
+    }
+
+    Err(anyhow::anyhow!("All models are currently unavailable"))
 }
-
 
 #[tokio::main]
 async fn main() {
-    // Build our application with some routes.
+    // Build our application with some routes
     let app = Router::new()
         .route("/health", get(health_handler))
         .route("/analyze_post", post(analyze_post_handler));
-    // Add CORS layer to allow cross-origin requests from any origin.
 
-    let cors = CorsLayer::new().allow_origin(Any).allow_methods(Any);
+    // Add CORS layer
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any);
     let app = app.layer(cors);
 
-    // Define the address to bind the server to.
+    // Define the address to bind the server to
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     println!("Listening on http://{}", addr);
 
-    // NEW version: use Tokio's TcpListener + axum::serve
+    // Start server
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .expect("Failed to bind port 3000");
