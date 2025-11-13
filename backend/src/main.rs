@@ -80,10 +80,16 @@ async fn call_gemini_api(prompt: &str) -> Result<String, anyhow::Error> {
     );
 
     let payload = serde_json::json!({
-        "contents": [
-            { "parts": [ { "text": prompt } ] }
-        ]
-    });
+    "contents": [
+        {
+            "role": "user",
+            "parts": [
+                { "text": prompt }
+            ]
+        }
+    ]
+   });
+
 
     let client = reqwest::Client::new();
     let res = client.post(&url).json(&payload).send().await?;
