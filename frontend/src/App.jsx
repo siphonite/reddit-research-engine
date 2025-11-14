@@ -1,7 +1,7 @@
 import { useState } from "react";
 import "./App.css";
 
-// Fix: Component names should start with uppercase
+// Fix: Match the actual filenames (case-sensitive)
 import Navbar from "./components/Navbar";
 import UrlInput from "./components/UrlInput";
 import ResultCard from "./components/ResultCard";
@@ -23,10 +23,10 @@ function App() {
     setLoading(true);
 
     try {
-      const response = await fetch("http://localhost:8000/api/generate", {
+      const response = await fetch("http://127.0.0.1:3000/analyze_post", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reddit_url: redditUrl }),
+        body: JSON.stringify({ url: redditUrl }),
       });
 
       const data = await response.json();
