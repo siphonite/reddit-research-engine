@@ -68,19 +68,32 @@ async fn analyze_post_handler(
             )
         })?;
 
-    // --- 3. Parse JSON ---
-    let data: serde_json::Value = response
-        .json()
-        .await
-        .map_err(|e| {
-            eprintln!("Reddit JSON parse error: {}", e);
-            (
-                axum::http::StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({
-                    "error": "Reddit returned invalid data."
-                })),
-            )
-        })?;
+// --- Read raw text first (Reddit may return HTML instead of JSON) ---
+    let text = response
+    .text()
+    .await
+    .map_err(|e| {
+        eprintln!("Failed reading Reddit response text: {}", e);
+        (
+            axum::http::StatusCode::BAD_GATEWAY,
+            Json(serde_json::json!({
+                "error": "Could not read Reddit response."
+            }))
+        )
+    })?;
+
+// --- Attempt to parse JSON manually ---
+    let data: serde_json::Value = serde_json::from_str(&text).map_err(|e| {
+    eprintln!("Reddit did not return JSON. Raw response:\n{}", text);
+
+    (
+        axum::http::StatusCode::BAD_REQUEST,
+        Json(serde_json::json!({
+            "error": "Reddit did not return valid JSON. The post may be private, removed, NSFW, blocked in your region, or require login."
+        }))
+    )
+})?;
+
 
     // --- 4. Extract content safely ---
     let post = &data[0]["data"]["children"][0]["data"];
