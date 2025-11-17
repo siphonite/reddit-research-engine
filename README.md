@@ -9,13 +9,13 @@ Frontend: React + Vite
 
 ⭐ Features
 
-✅ Extracts insights from any Reddit post URL
-✅ Generates a full startup concept
-✅ Clean UI with minimalistic design
-✅ Fast Rust backend deployed on Railway
-✅ React + Vite frontend deployed on Vercel
-✅ Fully responsive UI
-✅ One-click GitHub code access
+- Extracts insights from any Reddit post URL
+- Generates a full startup concept
+- Clean UI with minimalistic design
+- Fast Rust backend deployed on Railway
+- React + Vite frontend deployed on Vercel
+- Fully responsive UI
+- One-click GitHub code access
 
 How It Works:
 - Paste a Reddit post link (any subreddit)
