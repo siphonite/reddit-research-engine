@@ -3,6 +3,7 @@ use std::net::SocketAddr;
 use serde::{Deserialize, Serialize};
 use tower_http::cors::{CorsLayer, Any};
 use std::env;
+use axum::response::Html;
 
 #[derive(Deserialize)]
 struct AnalyzeRequest {
@@ -12,6 +13,24 @@ struct AnalyzeRequest {
 #[derive(Serialize)]
 struct HealthResponse {
     status: &'static str,
+} 
+
+async fn root_handler() -> Html<&'static str> {
+    Html(r#"
+        <!DOCTYPE html>
+        <html>
+        <head><title>Reddit Ideas API</title></head>
+        <body>
+            <h1>Reddit Ideas Generator API</h1>
+            <p>Status: Running ✅</p>
+            <p>Available endpoints:</p>
+            <ul>
+                <li>GET /health - Health check</li>
+                <li>POST /analyze_post - Analyze Reddit posts</li>
+            </ul>
+        </body>
+        </html>
+    "#)
 }
 
 async fn health_handler() -> Json<HealthResponse> {
