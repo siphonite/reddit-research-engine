@@ -1,3 +1,8 @@
+# Ignore Makefiles and auto-generated build files
 Makefile linguist-vendored
+backend/target/* linguist-vendored
+target/* linguist-vendored
+
+# Explicit language mappings
 backend/* linguist-language=Rust
 frontend/* linguist-language=JavaScript
