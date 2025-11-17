@@ -187,6 +187,7 @@ async fn call_gemini_api(prompt: &str) -> Result<String, anyhow::Error> {
 async fn main() {
     // Build our application with some routes
     let app = Router::new()
+        .route("/", get(root_handler))
         .route("/health", get(health_handler))
         .route("/analyze_post", post(analyze_post_handler))
         .layer(
