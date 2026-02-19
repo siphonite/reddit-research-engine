@@ -1,0 +1,12 @@
+[package]
+name = "reddit-research-cli"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+reqwest = { version = "0.11", default-features = false, features = ["json", "gzip", "rustls-tls"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+dotenvy = "0.15"

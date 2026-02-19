@@ -1,8 +1,0 @@
-[build]
-builder = "nixpacks"
-
-[experimental]
-source = "backend"
-
-[deploy]
-startCommand = "/app/target/release/backend"
