@@ -99,22 +99,47 @@ pub async fn generate_ideas(
 }
 
 fn build_prompt(post: &RedditPost) -> String {
-    let mut prompt = format!(
-        "Analyze the following Reddit discussion (post + comments) \
-         and extract actionable startup opportunities.\n\n\
-         Title: {}\n\n\
-         Body: {}\n\n",
-        post.title, post.body
+    let mut prompt = String::from(
+        "You are a pragmatic product strategist focused on small, buildable digital products.\n\n\
+         Analyze the following Reddit discussion (post + comments) and identify concrete pain points, \
+         frustrations, unmet needs, or repeated patterns.\n\n\
+         Your task is to generate 3 highly practical micro-SaaS or small product ideas that:\n\n\
+         - Can be built by a solo developer or small team\n\
+         - Are realistic and narrowly scoped\n\
+         - Solve a specific pain point from the discussion\n\
+         - Are suitable as:\n\
+         \x20 - A web app\n\
+         \x20 - A mobile app\n\
+         \x20 - A Chrome extension\n\
+         \x20 - A lightweight SaaS tool\n\
+         \x20 - A niche B2B utility\n\
+         \x20 - An automation tool\n\n\
+         Do NOT generate:\n\
+         - Large marketplaces\n\
+         - Social networks\n\
+         - Venture-scale platforms\n\
+         - Ideas that require massive funding\n\
+         - \"Uber for X\" concepts\n\
+         - Overly generic AI wrappers\n\n\
+         For each idea, provide:\n\n\
+         1. Product Name (short and simple)\n\
+         2. Target User (very specific niche)\n\
+         3. Core Problem (clearly derived from the discussion)\n\
+         4. MVP Feature Set (3–6 core features only)\n\
+         5. Monetization Model (subscription, one-time payment, etc.)\n\
+         6. Why This Is Feasible for a Solo Builder\n\n\
+         Reddit Discussion:\n\n",
     );
+
+    prompt.push_str(&format!("Title:\n{}\n\n", post.title));
+    prompt.push_str(&format!("Body:\n{}\n\n", post.body));
 
     if !post.comments.is_empty() {
         prompt.push_str("Top Comments:\n");
         for comment in &post.comments {
             prompt.push_str(&format!("- {}\n", comment));
         }
-        prompt.push('\n');
     }
 
-    prompt.push_str("Generate 3 potential startup ideas with short explanations.");
     prompt
 }
