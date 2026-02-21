@@ -4,6 +4,7 @@ pub enum AppError {
     InvalidInput(String),
     ExternalService(String),
     Io(String),
+    SheetsExport(String),
 }
 
 impl fmt::Display for AppError {
@@ -12,6 +13,7 @@ impl fmt::Display for AppError {
             AppError::InvalidInput(msg) => write!(f, "{}", msg),
             AppError::ExternalService(msg) => write!(f, "{}", msg),
             AppError::Io(msg) => write!(f, "{}", msg),
+            AppError::SheetsExport(msg) => write!(f, "Sheets export: {}", msg),
         }
     }
 }

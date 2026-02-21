@@ -17,7 +17,7 @@ fn format_text(results: &[AnalysisResult]) -> String {
         }
         out.push_str(&format!("URL: {}\n", r.url));
         out.push_str(&format!("Title: {}\n\n", r.title));
-        out.push_str(&format!("Ideas:\n{}\n", r.ideas));
+        out.push_str(&format!("Ideas:\n{}\n", r.ideas_text));
     }
     out
 }
@@ -35,7 +35,7 @@ fn format_markdown(results: &[AnalysisResult]) -> String {
         out.push_str(&format!("## Post {}\n\n", i + 1));
         out.push_str(&format!("**URL:** {}\n\n", r.url));
         out.push_str(&format!("**Title:** {}\n\n", r.title));
-        out.push_str(&format!("### Ideas\n\n{}\n\n", r.ideas));
+        out.push_str(&format!("### Ideas\n\n{}\n\n", r.ideas_text));
     }
     out
 }

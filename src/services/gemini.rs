@@ -139,7 +139,19 @@ fn build_prompt(post: &RedditPost) -> String {
         for comment in &post.comments {
             prompt.push_str(&format!("- {}\n", comment));
         }
+        prompt.push('\n');
     }
+
+    prompt.push_str(
+        "Respond ONLY with a JSON array (no markdown fences, no extra text). \
+         Each element must have exactly these fields:\n\
+         - \"product_name\": string\n\
+         - \"target_user\": string\n\
+         - \"core_problem\": string\n\
+         - \"mvp_features\": array of strings (3-6 items)\n\
+         - \"monetization\": string\n\
+         - \"feasibility\": string\n",
+    );
 
     prompt
 }
