@@ -1054,7 +1054,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "reddit-research-cli"
+name = "reddit-research-engine"
 version = "0.1.0"
 dependencies = [
  "chrono",

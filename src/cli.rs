@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand, ValueEnum};
 
 #[derive(Parser)]
-#[command(name = "reddit-research-cli")]
+#[command(name = "reddit-research-engine")]
 #[command(about = "Turn Reddit discussions into actionable startup ideas")]
 pub struct Cli {
     #[command(subcommand)]
