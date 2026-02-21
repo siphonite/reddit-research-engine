@@ -63,6 +63,32 @@ pub enum Command {
         #[arg(long)]
         save: Option<String>,
     },
+
+    /// Analyze hot posts from multiple subreddits
+    Multi {
+        /// Comma-separated subreddit names (e.g. startups,AppDevelopers,SideProject)
+        subreddits: String,
+
+        /// Number of posts to fetch per subreddit
+        #[arg(long, default_value_t = 5)]
+        limit: usize,
+
+        /// Number of top comments per post
+        #[arg(long, default_value_t = 10)]
+        comments: usize,
+
+        /// Maximum total ideas to generate (stops early when reached)
+        #[arg(long)]
+        max_ideas: Option<usize>,
+
+        /// Output format
+        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+        format: OutputFormat,
+
+        /// Save output to file
+        #[arg(long)]
+        save: Option<String>,
+    },
 }
 
 #[derive(Clone, ValueEnum)]

@@ -11,7 +11,7 @@ use clap::Parser;
 use cli::{Cli, Command};
 use config::AppConfig;
 use errors::AppError;
-use models::{parse_ideas, format_ideas_text, extract_subreddit, AnalysisResult};
+use models::{parse_ideas, format_ideas_text, extract_subreddit, AnalysisResult, Idea};
 
 #[tokio::main]
 async fn main() {
@@ -94,31 +94,134 @@ async fn run(
             format,
             save,
         } => {
-            eprintln!("Fetching hot posts from r/{}...", name);
-            let urls = services::reddit::fetch_subreddit_posts(client, &name, limit).await?;
-            let mut results = Vec::new();
-            for url in &urls {
-                eprintln!("Processing: {}", url);
-                let post =
-                    services::reddit::fetch_reddit_post(client, url, comments).await?;
-                let raw_ideas = services::gemini::generate_ideas(client, &config.gemini_api_key, &post).await?;
-                let ideas = parse_ideas(&raw_ideas);
-                let ideas_text = if ideas.is_empty() { raw_ideas.clone() } else { format_ideas_text(&ideas) };
-
-                // In subreddit mode, we already know the subreddit name
-                export_to_sheets(config, &name, &post.url, &post.title, &ideas).await;
-
-                results.push(AnalysisResult {
-                    url: post.url,
-                    title: post.title,
-                    ideas_text,
-                    ideas,
-                });
-            }
+            let results = process_subreddit(client, config, &name, limit, comments).await?;
             emit(&results, &format, save.as_deref())?;
+        }
+        Command::Multi {
+            subreddits,
+            limit,
+            comments,
+            max_ideas,
+            format,
+            save,
+        } => {
+            let sub_list: Vec<String> = subreddits
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+
+            if sub_list.is_empty() {
+                return Err(AppError::InvalidInput(
+                    "No valid subreddit names provided".into(),
+                ));
+            }
+
+            let mut all_results = Vec::new();
+            let mut total_ideas: usize = 0;
+            let mut total_posts: usize = 0;
+            let mut failed_posts: usize = 0;
+            let mut subs_processed: usize = 0;
+            let mut hit_limit = false;
+
+            for sub in &sub_list {
+                eprintln!("\n📡 Scanning r/{}...", sub);
+                subs_processed += 1;
+
+                let urls = match services::reddit::fetch_subreddit_posts(client, sub, limit).await {
+                    Ok(u) => u,
+                    Err(e) => {
+                        eprintln!("⚠️  Failed to fetch r/{}: {}", sub, e);
+                        continue;
+                    }
+                };
+
+                for url in &urls {
+                    eprintln!("Processing: {}", url);
+                    let result = process_post(client, config, sub, url, comments).await;
+
+                    match result {
+                        Ok(r) => {
+                            total_posts += 1;
+                            total_ideas += r.ideas.len();
+                            all_results.push(r);
+
+                            if let Some(max) = max_ideas {
+                                if total_ideas >= max {
+                                    hit_limit = true;
+                                    break;
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("⚠️  Failed to process post: {}", e);
+                            failed_posts += 1;
+                        }
+                    }
+                }
+
+                if hit_limit {
+                    eprintln!("\n🛑 Reached max-ideas limit ({})", max_ideas.unwrap());
+                    break;
+                }
+            }
+
+            emit(&all_results, &format, save.as_deref())?;
+
+            eprintln!("\n────────────────────────────────────────");
+            eprintln!("Scan complete.\n");
+            eprintln!("Subreddits processed: {}", subs_processed);
+            eprintln!("Posts analyzed: {}", total_posts);
+            eprintln!("Ideas generated: {}", total_ideas);
+            eprintln!("Posts failed: {}", failed_posts);
+            eprintln!("────────────────────────────────────────");
         }
     }
     Ok(())
+}
+
+/// Process all hot posts from a single subreddit. Reused by both `subreddit` and `multi` modes.
+async fn process_subreddit(
+    client: &reqwest::Client,
+    config: &AppConfig,
+    name: &str,
+    limit: usize,
+    comments: usize,
+) -> Result<Vec<AnalysisResult>, AppError> {
+    eprintln!("Fetching hot posts from r/{}...", name);
+    let urls = services::reddit::fetch_subreddit_posts(client, name, limit).await?;
+    let mut results = Vec::new();
+
+    for url in &urls {
+        eprintln!("Processing: {}", url);
+        let result = process_post(client, config, name, url, comments).await?;
+        results.push(result);
+    }
+
+    Ok(results)
+}
+
+/// Process a single Reddit post: fetch, generate ideas, parse, and export to Sheets.
+async fn process_post(
+    client: &reqwest::Client,
+    config: &AppConfig,
+    subreddit: &str,
+    url: &str,
+    comments: usize,
+) -> Result<AnalysisResult, AppError> {
+    let post = services::reddit::fetch_reddit_post(client, url, comments).await?;
+    let raw_ideas = services::gemini::generate_ideas(client, &config.gemini_api_key, &post).await?;
+    let ideas = parse_ideas(&raw_ideas);
+    let ideas_text = if ideas.is_empty() { raw_ideas.clone() } else { format_ideas_text(&ideas) };
+
+    export_to_sheets(config, subreddit, &post.url, &post.title, &ideas).await;
+
+    Ok(AnalysisResult {
+        url: post.url,
+        title: post.title,
+        ideas_text,
+        ideas,
+    })
 }
 
 /// Export ideas to Google Sheets if configured. Prints error but never crashes.
@@ -127,7 +230,7 @@ async fn export_to_sheets(
     subreddit: &str,
     post_url: &str,
     post_title: &str,
-    ideas: &[models::Idea],
+    ideas: &[Idea],
 ) {
     if !config.sheets_enabled() || ideas.is_empty() {
         return;
